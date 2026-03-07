@@ -4,6 +4,21 @@ system:
   updated: "2026-03-07"
 
 nodes:
+  stereo_depth_node:
+    file: stereo_depth_node.py
+    subscribes:
+      - topic: /stereo/left/image_raw
+        type: sensor_msgs/Image
+      - topic: /stereo/right/image_raw
+        type: sensor_msgs/Image
+    publishes:
+      - topic: /stereo/depth
+        type: sensor_msgs/Image
+        encoding: 32FC1
+      - topic: /stereo/disparity_debug
+        type: sensor_msgs/Image
+        encoding: 32FC1
+
   occupancy_grid_publisher:
     file: occupancy_grid_publisher.py
     subscribes:
