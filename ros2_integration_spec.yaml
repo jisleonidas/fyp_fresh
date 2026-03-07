@@ -1,0 +1,59 @@
+system:
+  module: obstacle-aware-arbitration
+  version: 1.0.0
+  updated: "2026-03-07"
+
+nodes:
+  occupancy_grid_publisher:
+    file: occupancy_grid_publisher.py
+    subscribes:
+      - topic: /stereo/depth
+        type: sensor_msgs/Image
+        notes: supports 32FC1 depth in meters or 16UC1 in millimeters
+    publishes:
+      - topic: /perception/occupancy_grid
+        type: nav_msgs/OccupancyGrid
+      - topic: /obstacle/nearest_distance
+        type: std_msgs/Float32
+
+  controller_new:
+    file: controller_new.py
+    subscribes:
+      - topic: /pure_pursuit/cmd_vel
+        type: geometry_msgs/Twist
+      - topic: /lane_keep/cmd_vel
+        type: geometry_msgs/Twist
+        optional: true
+      - topic: /cv/lane_offset
+        type: std_msgs/Float32
+        optional: true
+      - topic: /cv/confidence
+        type: std_msgs/Float32
+        optional: true
+      - topic: /perception/occupancy_grid
+        type: nav_msgs/OccupancyGrid
+      - topic: /obstacle/nearest_distance
+        type: std_msgs/Float32
+        optional: true
+    publishes:
+      - topic: /cmd_vel
+        type: geometry_msgs/Twist
+
+arbitration:
+  baseline_source: pure_pursuit
+  lane_correction: bounded_trim_scaled_by_confidence
+  obstacle_avoidance:
+    method: sampled_angular_candidates_with_clearance_scoring
+    stop_policy:
+      nearest_distance_threshold_m: 0.65
+      hold_time_s: 1.0
+  stale_input_policy:
+    pure_pursuit_timeout_s: 0.5
+
+occupancy_grid:
+  update_policy: publish_every_depth_frame
+  inflation: enabled
+  grid_encoding:
+    free: 0
+    occupied: 100
+    unknown: -1
