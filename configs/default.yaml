@@ -1,0 +1,56 @@
+system:
+  loop_hz: 20
+  max_runtime_s: 120
+
+camera:
+  baseline_m: 0.12
+  focal_px: 700.0
+  min_disparity: 0
+  num_disparities: 96
+  block_size: 7
+  depth_min_m: 0.3
+  depth_max_m: 20.0
+
+occupancy:
+  resolution_m: 0.1
+  width_cells: 120
+  height_cells: 120
+  origin_x_m: -2.0
+  origin_y_m: -6.0
+  inflation_radius_m: 0.4
+  obstacle_height_threshold_m: 0.08
+
+planning:
+  global:
+    map_resolution_m: 0.2
+    obstacle_cost: 1000
+  local:
+    horizon_s: 2.0
+    dt_s: 0.1
+    max_speed_mps: 2.0
+    min_speed_mps: 0.0
+    max_yaw_rate_rps: 1.2
+    samples_v: 8
+    samples_w: 11
+    weights:
+      goal: 1.0
+      clearance: 1.5
+      heading: 0.8
+      speed: 0.3
+
+control:
+  pure_pursuit:
+    lookahead_min_m: 0.6
+    lookahead_gain: 0.8
+    wheelbase_m: 0.28
+  speed_pid:
+    kp: 1.1
+    ki: 0.1
+    kd: 0.02
+    i_limit: 1.0
+
+safety:
+  sensor_timeout_s: 0.2
+  planner_timeout_s: 0.15
+  ttc_threshold_s: 1.2
+  degraded_speed_limit_mps: 0.6

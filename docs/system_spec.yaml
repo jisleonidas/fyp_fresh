@@ -1,0 +1,96 @@
+system:
+  name: stereo-self-driving-buggy
+  version: 1.0.0
+  date: "2026-03-07"
+  mission:
+    description: Autonomous waypoint following with real-time obstacle avoidance using stereo depth.
+    vehicle_model: ackermann
+    environment: outdoor_semi_structured
+
+hardware:
+  compute:
+    primary: jetson_or_x86
+    safety_mcu: required
+  sensors:
+    stereo_camera:
+      required: true
+      sync_required: true
+      min_fps: 15
+    imu:
+      required: true
+    wheel_odometry:
+      required: true
+    gps:
+      required: false
+
+software:
+  language: python
+  middleware: ros2_compatible_interfaces
+  modules:
+    - stereo_processor
+    - occupancy_mapper
+    - localization
+    - global_planner
+    - local_planner
+    - controller
+    - safety_supervisor
+
+interfaces:
+  topics:
+    - name: /camera/left/image_raw
+      type: Image
+      direction: in
+    - name: /camera/right/image_raw
+      type: Image
+      direction: in
+    - name: /imu/data
+      type: Imu
+      direction: in
+    - name: /odom
+      type: Odometry
+      direction: in
+    - name: /perception/depth
+      type: DepthMap
+      direction: out
+    - name: /perception/occupancy_local
+      type: OccupancyGrid
+      direction: out
+    - name: /planning/global_path
+      type: Path
+      direction: out
+    - name: /planning/local_command
+      type: MotionCommand
+      direction: out
+    - name: /control/actuator_cmd
+      type: ActuatorCommand
+      direction: out
+    - name: /safety/estop
+      type: Bool
+      direction: out
+
+performance_targets:
+  perception_hz_min: 15
+  planning_hz_min: 20
+  control_hz_min: 20
+  software_estop_latency_ms_max: 100
+
+safety:
+  states: [INIT, READY, AUTONOMOUS, DEGRADED, EMERGENCY_STOP]
+  checks:
+    - sensor_staleness
+    - planner_watchdog
+    - control_watchdog
+    - ttc_threshold
+  hardware_estop_required: true
+
+validation:
+  scenarios:
+    - static_obstacle_lane
+    - sudden_obstacle
+    - low_texture_surface
+    - sharp_turn_speed_limited
+  metrics:
+    - collision_count
+    - path_tracking_error
+    - minimum_obstacle_clearance
+    - mission_completion_time
