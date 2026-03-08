@@ -46,17 +46,46 @@ class RPiStereoCaptureNode(Node):
         self.cam_left = None
         self.cam_right = None
         self.running = True
-        
+
+        # Load calibration parameters
+        self.left_map1, self.left_map2 = None, None
+        self.right_map1, self.right_map2 = None, None
+        self.calib_loaded = self._load_calibration()
+
         self.get_logger().info(f'RPi Stereo Capture Node initializing...')
         self.get_logger().info(f'Resolution: {self.frame_width}x{self.frame_height} @ {self.frame_rate}Hz')
         self.get_logger().info(f'Use libcamera: {self.use_libcamera}')
-        
+
         # Initialize cameras
         self._init_cameras()
-        
+
         # Capture thread
         self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.capture_thread.start()
+
+    def _load_calibration(self):
+        try:
+            left = np.load('left_camera_calib.npz')
+            right = np.load('right_camera_calib.npz')
+            mtx_left = left['mtx']
+            dist_left = left['dist']
+            mtx_right = right['mtx']
+            dist_right = right['dist']
+            img_size = (self.frame_width, self.frame_height)
+            # For rectification, use identity R and zero T (single camera intrinsics)
+            R = np.eye(3)
+            new_mtx_left, _ = cv2.getOptimalNewCameraMatrix(mtx_left, dist_left, img_size, 1, img_size)
+            new_mtx_right, _ = cv2.getOptimalNewCameraMatrix(mtx_right, dist_right, img_size, 1, img_size)
+            self.left_map1, self.left_map2 = cv2.initUndistortRectifyMap(
+                mtx_left, dist_left, R, new_mtx_left, img_size, cv2.CV_16SC2)
+            self.right_map1, self.right_map2 = cv2.initUndistortRectifyMap(
+                mtx_right, dist_right, R, new_mtx_right, img_size, cv2.CV_16SC2)
+            self.get_logger().info('Loaded and prepared rectification maps from calibration files.')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'Failed to load calibration: {e}')
+            self.left_map1 = self.left_map2 = self.right_map1 = self.right_map2 = None
+            return False
     
     def _init_cameras(self):
         """Initialize both camera modules using libcamera or legacy API."""
@@ -122,7 +151,12 @@ class RPiStereoCaptureNode(Node):
             raise
     
     def _capture_loop(self):
-        """Main capture loop: grab frames and publish."""
+        """Main capture loop: grab frames, rectify, and publish."""
+        if not self.calib_loaded:
+            self.get_logger().error('Calibration parameters not loaded. Shutting down node.')
+            self.running = False
+            rclpy.shutdown()
+            return
         frame_id = 0
         while self.running:
             try:
@@ -135,31 +169,37 @@ class RPiStereoCaptureNode(Node):
                     right_frame = np.zeros((self.frame_height, self.frame_width, 3), dtype=np.uint8)
                     self.cam_left.capture(left_frame, format='rgb')
                     self.cam_right.capture(right_frame, format='rgb')
-                
+
                 # Convert RGB to BGR for OpenCV compatibility
                 left_bgr = cv2.cvtColor(left_frame, cv2.COLOR_RGB2BGR)
                 right_bgr = cv2.cvtColor(right_frame, cv2.COLOR_RGB2BGR)
-                
+
+                # Rectify images if calibration loaded
+                if self.left_map1 is not None and self.left_map2 is not None:
+                    left_bgr = cv2.remap(left_bgr, self.left_map1, self.left_map2, interpolation=cv2.INTER_LINEAR)
+                if self.right_map1 is not None and self.right_map2 is not None:
+                    right_bgr = cv2.remap(right_bgr, self.right_map1, self.right_map2, interpolation=cv2.INTER_LINEAR)
+
                 # Publish as ROS2 Image messages
                 stamp = self.get_clock().now().to_msg()
-                
+
                 left_msg = self.bridge.cv2_to_imgmsg(left_bgr, encoding='bgr8')
                 left_msg.header.stamp = stamp
                 left_msg.header.frame_id = 'stereo_left'
                 left_msg.header.seq = frame_id
                 self.left_pub.publish(left_msg)
-                
+
                 right_msg = self.bridge.cv2_to_imgmsg(right_bgr, encoding='bgr8')
                 right_msg.header.stamp = stamp
                 right_msg.header.frame_id = 'stereo_right'
                 right_msg.header.seq = frame_id
                 self.right_pub.publish(right_msg)
-                
+
                 frame_id += 1
-                
+
                 if frame_id % 30 == 0:
                     self.get_logger().debug(f'Published frame pair {frame_id}')
-                
+
             except Exception as e:
                 self.get_logger().error(f'Capture error: {e}')
                 time.sleep(0.1)
